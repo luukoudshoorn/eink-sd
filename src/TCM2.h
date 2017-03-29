@@ -23,6 +23,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "TCM2_regs.h"
 
+//Uncomment the next lines if you want more debug information shown over SerialUSB
+//#define DEBUG
+//#define debugSerial SerialUSB
+
 // Inverts data sent to display
 #define INVERT_BLACK_WHITE true
 

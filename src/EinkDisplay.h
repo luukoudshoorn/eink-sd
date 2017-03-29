@@ -1,7 +1,9 @@
 #ifndef __EINKDISPLAY_H__
 #define __EINKDISPLAY_H__
 
-#define DEBUG
+//Uncomment the next lines if you want more debug information shown over SerialUSB
+//#define DEBUG
+//#define debugSerial SerialUSB
 
 #include <SPI.h>
 #include <SD.h>
@@ -15,6 +17,9 @@
 
 #define MAX_TRANSFER 0xFA
 
+#define SCREENWIDTH 1024
+#define SCREENHEIGHT 1280
+
 #define FRAME_DEFAULT   0
 #define FRAME_DISPLAYED -1
 #define FRAME_TEMP      -2
@@ -24,11 +29,14 @@ class EinkDisplay {
   public:
     EinkDisplay(void);
     
-    bool begin(void);
-    void printSdContent(void);
+    void begin(void);
     void clearBuffer(void);
-    void uploadImage(const char *name, uint16_t x, uint16_t y);
+    bool uploadImage(File f, uint16_t x, uint16_t y);
     void updateScreen(void);
+  private:
+    TCM2FramebufferSlot displayed;
+    TCM2FramebufferSlot next;
+    TCM2FramebufferSlot temp;
 };
 
 #endif

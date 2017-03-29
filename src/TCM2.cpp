@@ -54,7 +54,9 @@ void TCM2::begin(SPIClass *mySPI_, uint8_t tc_busy_pin_, uint8_t tc_enable_pin_,
     pinMode(tc_busy_pin, INPUT);
     
     delay(100);
-    SerialUSB.println("Waiting for busy line");
+#ifdef DEBUG
+    debugSerial.println("Waiting for busy line");
+#endif
     busyWait();
 }
 
@@ -203,7 +205,7 @@ void TCM2::busyWait()
     delayMicroseconds(TCM2_BUSY_WAIT_DELAY_US);
     while(digitalRead(tc_busy_pin) == LOW) {
         #ifdef DEBUG
-        SerialUSB.print(".");
+        debugSerial.print(".");
         delay(10);
         #endif
     };
@@ -213,15 +215,15 @@ void TCM2::busyWait()
 TCM2Response TCM2::sendCommand(uint16_t ins_p1, uint8_t p2, uint8_t lc, uint8_t *data, bool invert)
 {
     #ifdef DEBUG
-    SerialUSB.print("INS=");
-    SerialUSB.print(U16_MSB_TO_U8(ins_p1), HEX);
-    SerialUSB.print(" P1=");
-    SerialUSB.print(U16_LSB_TO_U8(ins_p1), HEX);
-    SerialUSB.print(" P2=");
-    SerialUSB.print(p2, HEX);
-    SerialUSB.print(" Lc=");
-    SerialUSB.print(lc, HEX);
-    SerialUSB.print(": ");
+    debugSerial.print("INS=");
+    debugSerial.print(U16_MSB_TO_U8(ins_p1), HEX);
+    debugSerial.print(" P1=");
+    debugSerial.print(U16_LSB_TO_U8(ins_p1), HEX);
+    debugSerial.print(" P2=");
+    debugSerial.print(p2, HEX);
+    debugSerial.print(" Lc=");
+    debugSerial.print(lc, HEX);
+    debugSerial.print(": ");
     #endif
 
     startTransmission();
@@ -250,10 +252,10 @@ TCM2Response TCM2::sendCommand(uint16_t ins_p1, uint8_t p2, uint8_t lc, uint8_t 
 
     #ifdef DEBUG
     if (res != TCM2_EP_SW_NORMAL_PROCESSING) {
-        SerialUSB.print(" ERR=");
-        SerialUSB.println(res, HEX);
+        debugSerial.print(" ERR=");
+        debugSerial.println(res, HEX);
     } else {
-        SerialUSB.println("OK");
+        debugSerial.println("OK");
     }
     #endif
 
@@ -323,16 +325,18 @@ TCM2Response TCM2::sendAndReadData(uint16_t ins_p1, uint8_t p2, uint8_t le, uint
 
 void TCM2::dumpLinesStates()
 {
-    SerialUSB.print("SS=");
-    SerialUSB.print(digitalRead(ss_pin));
-    SerialUSB.print(" TC_ENA=");
-    SerialUSB.print(digitalRead(tc_enable_pin));
-    SerialUSB.print(" TC_BUSY=");
-    SerialUSB.print(digitalRead(tc_busy_pin));
-    SerialUSB.print(" CLK=");
-    SerialUSB.print(digitalRead(13));
-    SerialUSB.print(" MISO=");
-    SerialUSB.print(digitalRead(11));
-    SerialUSB.print(" MOSI=");
-    SerialUSB.println(digitalRead(12));
+  #ifdef DEBUG
+    debugSerial.print("SS=");
+    debugSerial.print(digitalRead(ss_pin));
+    debugSerial.print(" TC_ENA=");
+    debugSerial.print(digitalRead(tc_enable_pin));
+    debugSerial.print(" TC_BUSY=");
+    debugSerial.print(digitalRead(tc_busy_pin));
+    debugSerial.print(" CLK=");
+    debugSerial.print(digitalRead(13));
+    debugSerial.print(" MISO=");
+    debugSerial.print(digitalRead(11));
+    debugSerial.print(" MOSI=");
+    debugSerial.println(digitalRead(12));
+  #endif
 }

@@ -3,11 +3,13 @@
 SPIClass *EINKSPI;
 TCM2 tcm;
 
-//2: MISO
-//3: SCK
-//4: MOSI
-//5: CS
+//A0: MISO
+//A3: SCK
+//A2: MOSI
+//D5: CS
 SPIClass SPI5(&sercom5, A0, A3, A2, SPI_PAD_0_SCK_1, SERCOM_RX_PAD_2);
+
+const uint8_t white = 0x00;
 
 uint8_t image_buffer[MAX_TRANSFER];
 
@@ -15,7 +17,7 @@ EinkDisplay::EinkDisplay()
 {
 }
 
-bool EinkDisplay::begin() {
+void EinkDisplay::begin() {
   SPI5.begin();
   
   pinPeripheral(A0, PIO_SERCOM_ALT);
@@ -24,62 +26,39 @@ bool EinkDisplay::begin() {
   
   tcm.begin(&SPI5, TCM2_BUSY_PIN, TCM2_ENABLE_PIN, TCM2_SPI_CS);
   
-  if (!SD.begin()) {
-#ifdef DEBUG
-    SerialUSB.println("initialization failed!");
-#endif
-    return false;
-  }
-  return true;
+  displayed = 1;
+  next = 2;
+  temp = 3;
+  
+  //current slot might be 2, so this command could fail
+  tcm.imageEraseFrameBuffer(temp);
+  tcm.uploadImageFixVal(&white, 1, temp);
+  tcm.displayUpdate(temp, TCM2_DISPLAY_UPDATE_MODE_FLASHLESS);
+  //display is now forced to slot 3, allowing slot 1 to be erased an shown
+  tcm.imageEraseFrameBuffer(displayed);
+  tcm.uploadImageFixVal(&white, 1, displayed);
+  tcm.displayUpdate(displayed);
+  //display now displays slot 1, allowing slot 2 and 3 to be erased
+  tcm.imageEraseFrameBuffer(next);
+  tcm.uploadImageFixVal(&white, 1, next);
+  tcm.imageEraseFrameBuffer(temp);
+  tcm.uploadImageFixVal(&white, 1, temp);
 }
 
-void printDirectory(File dir, int numTabs) {
-  while (true) {
-
-    File entry =  dir.openNextFile();
-    if (! entry) {
-      // no more files
-      break;
-    }
-    for (uint8_t i = 0; i < numTabs; i++) {
-      SerialUSB.print('\t');
-    }
-    SerialUSB.print(entry.name());
-    if (entry.isDirectory()) {
-      SerialUSB.println("/");
-      printDirectory(entry, numTabs + 1);
-    } else {
-      // files have sizes, directories do not
-      SerialUSB.print("\t\t");
-      SerialUSB.println(entry.size(), DEC);
-    }
-    entry.close();
-  }
-}
-
-void EinkDisplay::printSdContent() {
-  File dir = SD.open("/");
-  printDirectory(dir, 1);
-}
-
-void EinkDisplay::uploadImage(const char *name, uint16_t x, uint16_t y) {
-  //get data from SD
-  File f = SD.open(name);
+bool EinkDisplay::uploadImage(File f, uint16_t x, uint16_t y) {
   if(!f) {
-    return;
+    return false;
   }
   
   if(f.size() == 0) {
-    f.close();
-    return;
+    return false;
   }
   
   //--------- parse BMP header ------------
   
   //only allow bitmaps
   if(!(f.read() == 'B' && f.read() == 'M')) {
-    f.close();
-    return;
+    return false;
   }
   
   //data start
@@ -102,15 +81,13 @@ void EinkDisplay::uploadImage(const char *name, uint16_t x, uint16_t y) {
   //check if planes == 1
   f.seek(0x1A);
   if(f.read() != 1) {
-    f.close();
-    return;
+    return false;
   }
   
   //check if bits per pixel == 1
   f.seek(0x1C);
   if(f.read() != 1) {
-    f.close();
-    return;
+    return false;
   }
   
   uint16_t lineWidth = width>>3;
@@ -123,7 +100,7 @@ void EinkDisplay::uploadImage(const char *name, uint16_t x, uint16_t y) {
   if(width%8 != 0) {
     //Well that's unfortunate, but we have to send a multiple of 8 bits
 #ifdef DEBUG
-    SerialUSB.println("WARNING: Image width should be a multiple of 8 bits! Adding padding...");
+    debugSerial.println("WARNING: Image width should be a multiple of 8 bits! Adding padding...");
 #endif
     lineDataBytes++;
   }
@@ -139,47 +116,96 @@ void EinkDisplay::uploadImage(const char *name, uint16_t x, uint16_t y) {
   dataSize |= (f.read())<<16;
   dataSize |= (f.read())<<24;
   
-  SerialUSB.println("Printing image");
-  SerialUSB.print("Width: ");
-  SerialUSB.println(width);
-  SerialUSB.print("Height: ");
-  SerialUSB.println(height);
-  SerialUSB.print("lineWidth (bytes):");
-  SerialUSB.println(lineWidth);
-  SerialUSB.print("Line data bytes:");
-  SerialUSB.println(lineDataBytes);
-  SerialUSB.print("dataSize (bytes):");
-  SerialUSB.println(dataSize);
-  SerialUSB.print("Start of data:");
-  SerialUSB.println(dataPos);
+  debugSerial.println("Printing image");
+  debugSerial.print("Width: ");
+  debugSerial.println(width);
+  debugSerial.print("Height: ");
+  debugSerial.println(height);
+  debugSerial.print("lineWidth (bytes):");
+  debugSerial.println(lineWidth);
+  debugSerial.print("Line data bytes:");
+  debugSerial.println(lineDataBytes);
+  debugSerial.print("dataSize (bytes):");
+  debugSerial.println(dataSize);
+  debugSerial.print("Start of data:");
+  debugSerial.println(dataPos);
 #endif
   
+  uint16_t x2 = x+(lineDataBytes<<3);
+  uint16_t y2 = y+height;
+  
   //---------- upload image --------------
-  tcm.uploadImageSetROI(x, y, x+(lineDataBytes<<3), y+height, FRAME_DEFAULT);
+  
+  //divide image in 5 non-overlapping areas
+  //                   v---SCREENWIDTH
+  //  0---x--------x2--+ 
+  //  |                |
+  //  |        1       |
+  //  |                |
+  //  y---+--------+---+
+  //  | 2 | 3(ROI) | 4 |
+  //  y2--+--------+---+
+  //  |                |
+  //  |        5       |
+  //  |                |
+  //  +--SCREENHEIGHT--+
+  
+  tcm.imageEraseFrameBuffer(temp);
+  if(y > 0) {
+    // Only if image is not on top edge
+    tcm.uploadImageSetROI(0, 0, SCREENWIDTH, y, temp);
+    tcm.uploadImageCopySlots(temp, next);
+  }
+  if(x > 0) {
+    // Only if image is not on left edge
+    tcm.uploadImageSetROI(0, y, x, y2, temp);
+    tcm.uploadImageCopySlots(temp, next);
+  }
+  if(x2 < SCREENWIDTH) {
+    // Only if image is not on right edge
+    tcm.uploadImageSetROI(x2, y, SCREENWIDTH, y2, temp);
+    tcm.uploadImageCopySlots(temp, next);
+  }
+  if(y2 < SCREENHEIGHT) {
+    // Only if image is not on bottom edge
+    tcm.uploadImageSetROI(0, y2, SCREENWIDTH, SCREENHEIGHT, temp);
+    tcm.uploadImageCopySlots(temp, next);
+  }
+  tcm.uploadImageSetROI(x, y, x2, y2, temp);
   
   for(uint16_t currentLine=0;currentLine<height;currentLine++) {
     f.seek(dataPos);
     
 #ifdef DEBUG
-    SerialUSB.println(currentLine);
+    debugSerial.println(currentLine);
 #endif
     
     //always transfer one line at a time
     f.read(image_buffer, lineDataBytes);
-    tcm.uploadImageData(image_buffer, lineDataBytes, FRAME_DEFAULT);
+    tcm.uploadImageData(image_buffer, lineDataBytes, temp);
     
     dataPos -= lineWidth;
   }
+  
+  tcm.imageEraseFrameBuffer(next);
+  tcm.uploadImageCopySlots(next, temp);
+  
+  return true;
 }
 
 void EinkDisplay::clearBuffer() {
-  tcm.imageEraseFrameBuffer(FRAME_DEFAULT);
+  tcm.imageEraseFrameBuffer(next);
+  //default to white
+  tcm.uploadImageFixVal(&white, 1, next);
 }
 
 void EinkDisplay::updateScreen() {
-  tcm.displayUpdate(FRAME_DEFAULT, TCM2_DISPLAY_UPDATE_MODE_DEFAULT);
-  //start with clear, or ROI commands won't work (might have misread this part in datasheet, doesn't seem to make sense)
+  tcm.displayUpdate(next, TCM2_DISPLAY_UPDATE_MODE_DEFAULT);
+  TCM2FramebufferSlot oldNext = next;
+  next = temp;
+  temp = displayed;
+  displayed = oldNext;
   clearBuffer();
-  //populate with current image
-  tcm.uploadImageCopySlots(FRAME_DEFAULT, FRAME_DISPLAYED);
+  //start next image with copy of this image
+  tcm.uploadImageCopySlots(next, displayed);
 }
