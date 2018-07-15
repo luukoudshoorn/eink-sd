@@ -5,28 +5,28 @@
 #######################################
 # Datatypes (KEYWORD1)
 #######################################
-EinkDisplay			KEYWORD1
+EinkDisplay	KEYWORD1
 
 #######################################
 # Methods and Functions (KEYWORD2)
 #######################################
 
-begin		      KEYWORD2
-clearBuffer		KEYWORD2
-uploadImage		KEYWORD2
+begin	KEYWORD2
+clearBuffer	KEYWORD2
+uploadImage	KEYWORD2
 updateScreen	KEYWORD2
 
 #######################################
 # Instances (KEYWORD3)
 #######################################
 
-EinkDisplay		KEYWORD3
+EinkDisplay	KEYWORD3
 
 #######################################
 # Constants (LITERAL1)
 #######################################
 
-FRAME_DEFAULT     LITERAL1
-FRAME_DISPLAYED	  LITERAL1
-FRAME_TEMP        LITERAL1
-FRAME_NEXT     	  LITERAL1
+FRAME_DEFAULT	LITERAL1
+FRAME_DISPLAYED	LITERAL1
+FRAME_TEMP	LITERAL1
+FRAME_NEXT	LITERAL1
